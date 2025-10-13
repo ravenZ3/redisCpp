@@ -57,10 +57,11 @@ int main(int argc, char **argv) {
   char buffer[1024];
   
   int bytes_read = read(client_fd,buffer, sizeof(buffer));
-  std::cout << "this is what i've received:"  << buffer << std::endl;
+  std::cout << "this is what i've received:"  << std::string(buffer,bytes_read) << std::endl;
   
-  write(server_fd, "+PONG\r\n", 7);
-  
+  write(client_fd, "+PONG\r\n", 7);
+  close(client_fd);
+
   close(server_fd);
 
   return 0;
