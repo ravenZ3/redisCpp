@@ -71,26 +71,18 @@ int main(int argc, char **argv)
 
 void DoWork(int client_fd)
 {
-    char buffer[1024];
-    while (true)
-    {
-        ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer));
-        if (bytes_read <= 0)
-            break;
+  char buffer[1024];
+  while (true)
+  {
+    ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer));
+    if (bytes_read <= 0)
+      break;
 
-        // remove trailing \r\n
-        buffer[strcspn(buffer, "\r\n")] = '\0';
+    // remove trailing \r\n
+    buffer[strcspn(buffer, "\r\n")] = '\0';
 
-        if (strcmp(buffer, "PING") == 0)
-        {
-            const char* pong = "+PONG\r\n";
-            send(client_fd, pong, strlen(pong), 0);
-        }
-        else
-        {
-            const char* err = "-ERR unknown cmd\r\n";
-            send(client_fd, err, strlen(err), 0);
-        }
-    }
-    close(client_fd);
+    const char *pong = "+PONG\r\n";
+    send(client_fd, pong, strlen(pong), 0);
+  }
+  close(client_fd);
 }
