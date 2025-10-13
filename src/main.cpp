@@ -71,17 +71,19 @@ int main(int argc, char **argv)
 }
 
 
-void DoWork(int client_fd){
+void DoWork(int client_fd) {
     char buffer[1024];
-    while(true){
-      ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer) - 1);
-      if(bytes_read <= 0) break; 
+    while (true) {
+        ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer) - 1);
+        if (bytes_read <= 0) break;
 
-      buffer[bytes_read] = '\0';
-      if(strncmp(buffer, "PING", 4) == 0)
-        write(client_fd, "+PONG\r\n", 7);
-      else
-        write(client_fd, "-ERR unknown command\r\n", 23);
+        buffer[bytes_read] = '\0';
+        buffer[strcspn(buffer, "\r\n")] = '\0'; // remove trailing \r\n
+
+        if (strcmp(buffer, "PING") == 0)
+            write(client_fd, "+PONG\r\n", 7);
+        else
+            write(client_fd, "-ERR unknown cmd\r\n", 19);
     }
     close(client_fd);
 }
