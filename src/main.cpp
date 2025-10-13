@@ -52,8 +52,14 @@ int main(int argc, char **argv) {
 
   // Uncomment this block to pass the first stage
   
-  accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
-  std::cout << "+PONG\r\n";
+  auto client_fd  = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
+  
+  char buffer[1024];
+  
+  int bytes_read = read(client_fd,buffer, sizeof(buffer));
+  std::cout << "this is what i've received:"  << buffer << std::endl;
+  
+  write(server_fd, "+PONG\r\n", 7);
   
   close(server_fd);
 
