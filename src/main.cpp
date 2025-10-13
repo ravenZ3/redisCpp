@@ -81,7 +81,7 @@ void DoWork(int client_fd){
       if(strncmp(buffer, "PING", 4) == 0)
         write(client_fd, "+PONG\r\n", 7);
       else
-        write(client_fd, "-ERR unknown cmd\r\n", 23);
+        write(client_fd, "-ERR unknown command\r\n", 23);
     }
     close(client_fd);
 }
