@@ -55,11 +55,11 @@ int main(int argc, char **argv) {
   auto client_fd  = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
   
   char buffer[1024];
-  
+  while(1){ 
   int bytes_read = read(client_fd,buffer, sizeof(buffer));
-  std::cout << "this is what i've received:"  << std::string(buffer,bytes_read) << std::endl;
-  
+  std::cout << "received this:"  << std::string(buffer,bytes_read) << std::endl;
   write(client_fd, "+PONG\r\n", 7);
+  }
   close(client_fd);
 
   close(server_fd);
