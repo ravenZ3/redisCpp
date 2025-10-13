@@ -57,7 +57,6 @@ int main(int argc, char **argv)
   int client_addr_len = sizeof(client_addr);
   std::cout << "Waiting for a client to connect...\n";
 
-
   while (true)
   {
     int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, (socklen_t *)&client_addr_len);
@@ -70,20 +69,28 @@ int main(int argc, char **argv)
   return 0;
 }
 
-
-void DoWork(int client_fd) {
+void DoWork(int client_fd)
+{
     char buffer[1024];
-    while (true) {
-        ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer) - 1);
-        if (bytes_read <= 0) break;
+    while (true)
+    {
+        ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer));
+        if (bytes_read <= 0)
+            break;
 
-        buffer[bytes_read] = '\0';
-        buffer[strcspn(buffer, "\r\n")] = '\0'; // remove trailing \r\n
+        // remove trailing \r\n
+        buffer[strcspn(buffer, "\r\n")] = '\0';
 
         if (strcmp(buffer, "PING") == 0)
-            write(client_fd, "+PONG\r\n", 7);
+        {
+            const char* pong = "+PONG\r\n";
+            send(client_fd, pong, strlen(pong), 0);
+        }
         else
-            write(client_fd, "-ERR unknown cmd\r\n", 19);
+        {
+            const char* err = "-ERR unknown cmd\r\n";
+            send(client_fd, err, strlen(err), 0);
+        }
     }
     close(client_fd);
 }
