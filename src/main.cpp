@@ -130,7 +130,26 @@ void DoWork(int client_fd)
         const auto &v = it->second;
         int start = std::stoi(tokens[2]);
         int stop = std::stoi(tokens[3]);
-        if(stop > v.size()) stop = v.size() -1 ;
+
+        // handling the cases on stop and start interators
+
+        // handling the negative cases
+        if (stop < 0 || start < 0)
+        {
+          if (start <= -v.size())
+            start = 0;
+          if (stop <= -v.size())
+            stop = 0;
+
+          if (start < 0)
+            start += v.size();
+
+          if (stop < 0)
+            stop += v.size();
+        }
+        // handing the case where
+        if (stop > v.size())
+          stop = v.size() - 1;
         if (start > stop)
         {
           std::string empty = "*0\r\n";
