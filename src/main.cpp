@@ -10,10 +10,11 @@
 #include <unordered_map>
 #include <mutex>
 #include <chrono>
+#include <deque>
 
 std::unordered_map<std::string, std::string> m;
 std::mutex mtx;
-std::unordered_map<std::string, std::vector<std::string>> list;
+std::unordered_map<std::string, std::deque<std::string>> list;
 
 void DoWork(int client_fd);
 std::vector<std::string> f(const std::string &s);
@@ -136,9 +137,9 @@ void DoWork(int client_fd)
         // handling the negative cases
         if (stop < 0 || start < 0)
         {
-          if (start <= -v.size())
+          if (start <= (int)-v.size())
             start = 0;
-          if (stop <= -v.size())
+          if (stop <= (int)-v.size())
             stop = 0;
 
           if (start < 0)
@@ -178,7 +179,7 @@ void DoWork(int client_fd)
       auto it = list.find(key);
       if (it == list.end())
       {
-        std::vector<std::string> v;
+        std::deque<std::string> v;
         for (int i = 2; i < n; i++)
           v.push_back(tokens[i]);
         list[key] = v;
@@ -191,6 +192,36 @@ void DoWork(int client_fd)
 
       std::string resp = ":" + std::to_string(list[key].size()) + "\r\n";
       send(client_fd, resp.c_str(), resp.size(), 0);
+    }
+    else if (tokens.size() >= 3 && tokens[0] == "LPUSH")
+    {
+      std::string key = tokens[1];
+
+      {
+        std::lock_guard<std::mutex> lock(mtx);
+        auto it = list.find(key);
+        int n = tokens.size();
+
+        if (it != list.end())
+        {
+          for (int i = 2; i < n; i++)
+          {
+            list[key].push_front(tokens[i]);
+          }
+        }
+        else if (it == list.end())
+        {
+          std::deque<std::string> s;
+          for (int i = 2; i < n; i++)
+          {
+            s.push_front(tokens[i]);
+          }
+          list[key] = s;
+        }
+      }
+      int t = list[key].size();
+      std::string s = ":" + std::to_string(t) + "\r\n";
+      send(client_fd, s.c_str(), s.size(), 0);
     }
     else
     {
