@@ -115,21 +115,23 @@ void DoWork(int client_fd)
         send(client_fd, nil, strlen(nil), 0);
       }
     }
-    else if (tokens.size() == 3 && tokens[0] == "RPUSH")
+    else if (tokens.size() >= 3 && tokens[0] == "RPUSH")
     {
+      int n = tokens.size();
       std::lock_guard<std::mutex> lock(mtx);
       std::string key = tokens[1];
       auto it = list.find(key);
       if (it == list.end())
       {
         std::vector<std::string> v;
-        v.push_back(tokens[2]);
+        for (int i = 2; i < n; i++)
+          v.push_back(tokens[i]);
         list[key] = v;
       }
       else
       {
-
-        list[key].push_back(tokens[2]);
+        for (int i = 2; i < n; i++)
+          list[key].push_back(tokens[i]);
       }
 
       std::string resp = ":" + std::to_string(list[key].size()) + "\r\n";
