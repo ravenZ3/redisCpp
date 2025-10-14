@@ -115,6 +115,42 @@ void DoWork(int client_fd)
         send(client_fd, nil, strlen(nil), 0);
       }
     }
+    else if (tokens.size() == 4 && tokens[0] == "LRANGE")
+    {
+      std::lock_guard<std::mutex> lock(mtx);
+      std::string key = tokens[1];
+      auto it = list.find(key);
+      if (it == list.end())
+      {
+        std::string empty = "-1\r\n";
+        send(client_fd, empty.c_str(), empty.size(), 0);
+      }
+      else if (it != list.end())
+      {
+        const auto &v = it->second;
+        int start = std::stoi(tokens[2]);
+        int stop = std::stoi(tokens[3]);
+        if(stop > v.size()) stop = v.size() -1 ;
+        if (start > stop)
+        {
+          std::string empty = "*0\r\n";
+          send(client_fd, empty.c_str(), empty.size(), 0);
+        }
+
+        else
+        {
+          int n = (stop - start + 1);
+          std::string s = "*" + std::to_string(n) + "\r\n";
+          send(client_fd, s.c_str(), s.size(), 0);
+          for (int i = start; i <= stop; i++)
+          {
+            std::string curr = v[i];
+            std::string s = "$" + std::to_string(curr.size()) + "\r\n" + curr + "\r\n";
+            send(client_fd, s.c_str(), s.size(), 0);
+          }
+        }
+      }
+    }
     else if (tokens.size() >= 3 && tokens[0] == "RPUSH")
     {
       int n = tokens.size();
