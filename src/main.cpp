@@ -141,7 +141,6 @@ void DoWork(int client_fd)
       send(client_fd, err, strlen(err), 0);
     }
   }
-
   close(client_fd);
 }
 
