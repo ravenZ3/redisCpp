@@ -116,6 +116,20 @@ void DoWork(int client_fd)
         send(client_fd, nil, strlen(nil), 0);
       }
     }
+    else if (tokens.size() == 2 && tokens[0] == "LLEN")
+    {
+      std::lock_guard<std::mutex> lock(mtx);
+      std::string key = tokens[1];
+      auto it = list.find(key);
+      if(it == list.end()){
+        send(client_fd, ":0\r\n", 4 , 0 );
+      }
+      else if(it != list.end()){
+        int N = list[key].size();
+        std::string s = ":" + std::to_string(N) + +"\r\n";
+        send(client_fd, s.c_str(), s.size(), 0);
+      }
+    }
     else if (tokens.size() == 4 && tokens[0] == "LRANGE")
     {
       std::lock_guard<std::mutex> lock(mtx);
