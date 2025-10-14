@@ -132,7 +132,7 @@ void DoWork(int client_fd)
         send(client_fd, s.c_str(), s.size(), 0);
       }
     }
-    else if (tokens.size() == 2 && tokens[0] == "LPOP")
+    else if (tokens.size() >= 2 && tokens[0] == "LPOP")
     {
       std::string key = tokens[1];
       {
@@ -141,6 +141,20 @@ void DoWork(int client_fd)
         if (it == list.end())
         {
           send(client_fd, "-1\r\n", 4, 0);
+        }
+        else if (tokens.size() == 3)
+        {
+          int n = std::stoi(tokens[2]);
+          std::string c = "*" + std::to_string(n) + "\r\n";
+          send(client_fd, c.c_str(), c.size(), 0);
+          for (int i = 0; i < n; i++)
+          {
+            std::string curr = list[key][0];
+
+            std::string s = "$" + std::to_string(curr.size()) + "\r\n" + curr + "\r\n";
+            send(client_fd, s.c_str(), s.size(), 0);
+            list[key].pop_front();
+          }
         }
         else
         {
