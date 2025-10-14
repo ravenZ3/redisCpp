@@ -121,13 +121,34 @@ void DoWork(int client_fd)
       std::lock_guard<std::mutex> lock(mtx);
       std::string key = tokens[1];
       auto it = list.find(key);
-      if(it == list.end()){
-        send(client_fd, ":0\r\n", 4 , 0 );
+      if (it == list.end())
+      {
+        send(client_fd, ":0\r\n", 4, 0);
       }
-      else if(it != list.end()){
+      else if (it != list.end())
+      {
         int N = list[key].size();
         std::string s = ":" + std::to_string(N) + +"\r\n";
         send(client_fd, s.c_str(), s.size(), 0);
+      }
+    }
+    else if (tokens.size() == 2 && tokens[0] == "LPOP")
+    {
+      std::string key = tokens[1];
+      {
+        std::lock_guard<std::mutex> lock(mtx);
+        auto it = list.find(key);
+        if (it == list.end())
+        {
+          send(client_fd, "-1\r\n", 4, 0);
+        }
+        else
+        {
+          std::string front_element = list[key][0];
+          list[key].pop_front();
+          std::string s = "$" + std::to_string(front_element.size()) + "\r\n" + front_element + "\r\n";
+          send(client_fd, s.c_str(), s.size(), 0);
+        }
       }
     }
     else if (tokens.size() == 4 && tokens[0] == "LRANGE")
