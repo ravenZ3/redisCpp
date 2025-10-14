@@ -13,6 +13,7 @@
 
 std::unordered_map<std::string, std::string> m;
 std::mutex mtx;
+std::unordered_map<std::string, std::vector<std::string>> list;
 
 void DoWork(int client_fd);
 std::vector<std::string> f(const std::string &s);
@@ -113,6 +114,26 @@ void DoWork(int client_fd)
         const char *nil = "$-1\r\n";
         send(client_fd, nil, strlen(nil), 0);
       }
+    }
+    else if (tokens.size() == 3 && tokens[0] == "RPUSH")
+    {
+      std::lock_guard<std::mutex> lock(mtx);
+      std::string key = tokens[1];
+      auto it = list.find(key);
+      if (it == list.end())
+      {
+        std::vector<std::string> v;
+        v.push_back(tokens[2]);
+        list[key] = v;
+      }
+      else
+      {
+
+        list[key].push_back(tokens[2]);
+      }
+
+      std::string resp = ":" + std::to_string(list[key].size()) + "\r\n";
+      send(client_fd, resp.c_str(), resp.size(), 0);
     }
     else
     {
