@@ -122,7 +122,7 @@ void DoWork(int client_fd)
       auto it = list.find(key);
       if (it == list.end())
       {
-        std::string empty = "-1\r\n";
+        std::string empty = "*0\r\n";
         send(client_fd, empty.c_str(), empty.size(), 0);
       }
       else if (it != list.end())
