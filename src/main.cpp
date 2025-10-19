@@ -224,7 +224,7 @@ void DoWork(int client_fd)
         }
         else
         {
-          // timeout occurred
+          // timeout occurred-ed
           const char *nil = "$-1\r\n";
           send(client_fd, nil, strlen(nil), 0);
         }
