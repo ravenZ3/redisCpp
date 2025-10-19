@@ -166,7 +166,7 @@ void DoWork(int client_fd)
         }
       }
     }
-    // -------------------- BLPOP --------------------
+    
     else if (tokens.size() == 3 && tokens[0] == "BLPOP")
     {
       std::string key = tokens[1];
