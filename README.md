@@ -1,33 +1,46 @@
-[![progress-banner](https://backend.codecrafters.io/progress/redis/bb68597a-e915-48da-b717-176566be8dda)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
+# Redis-Cpp — Tiny Redis Clone
 
-This is a starting point for C++ solutions to the
-["Build Your Own Redis" Challenge](https://codecrafters.io/challenges/redis).
+this little redis clone knows a handful of commands, each one is like a thought in a stream, simple but purposeful:
 
-In this challenge, you'll build a toy Redis clone that's capable of handling
-basic commands like `PING`, `SET` and `GET`. Along the way we'll learn about
-event loops, the Redis protocol and more.
+## Commands
 
-**Note**: If you're viewing this repo on GitHub, head over to
-[codecrafters.io](https://codecrafters.io) to try the challenge.
+* **PING** → the heartbeat check. send `PING`, get `PONG`. simple, immediate.
 
-# Passing the first stage
+* **ECHO <msg>** → speaks back what you say. say something, it says it back.
 
-The entry point for your Redis implementation is in `src/main.cpp`. Study and
-uncomment the relevant code, and push your changes to pass the first stage:
+* **SET <key> <value> [PX <ms>]** → store a string under a key. optional PX lets it expire after milliseconds. like writing a note and setting a timer to burn it.
 
-```sh
-git commit -am "pass 1st stage" # any msg
-git push origin master
-```
+* **GET <key>** → read what you stored. returns `$-1` if nothing’s there.
 
-That's all!
+* **LLEN <key>** → length of a list. zero if the list is empty or nonexistent.
 
-# Stage 2 & beyond
+* **LPUSH / RPUSH <key> <values...>** → add one or more values to the left or right of a list. returns new length.
 
-Note: This section is for stages 2 and beyond.
+* **LPOP <key> [count]** → remove and return elements from the left. supports popping multiple elements.
 
-1. Ensure you have `cmake` installed locally
-1. Run `./your_program.sh` to run your Redis server, which is implemented in
-   `src/main.cpp`.
-1. Commit your changes and run `git push origin master` to submit your solution
-   to CodeCrafters. Test output will be streamed to your terminal.
+* **BLPOP <key> <timeout>** → blocking pop from the left. waits until an element is available or timeout expires. `timeout=0` waits indefinitely.
+
+* **LRANGE <key> <start> <stop>** → get a slice of a list. handles negative indices like redis. returns in RESP2 array format.
+
+* **TYPE <key>** → tells you the type of value stored at a key. returns `"string"`, `"list"`, or `"none"`.
+
+basically, this is your tiny redis brain. it stores strings, lists, and knows how to wait, push, pop, slice, and tell you what it thinks it is.
+
+## How it works — Multithreading & Parsing
+
+so imagine the server is awake, listening. every client that knocks on the door gets its own little thread. it’s like giving each thought its own lane to move in, so nobody blocks anybody else.
+
+* **threads** → each client lives in its own thread. do something long? doesn’t matter, others keep talking. `std::thread(DoWork, client_fd).detach();` — fire and forget, let it roam free.
+
+* **mutexes** → shared memory is scary. strings, lists, anything in `m` or `list` is protected by a mutex. `std::lock_guard<std::mutex>` or `std::unique_lock<std::mutex>` makes sure no two threads fight over the same key at the same time. think of it as pausing one thought until another finishes its sentence.
+
+* **condition variables** → this is for blocking pops. if a thread wants something from an empty list, it just waits. sleeps. doesn’t burn CPU. wakes up only when someone pushes. kind of like holding your breath until the world gives you an answer.
+
+* **parsing RESP2** → the input isn’t plain text, it’s structured: `*3\r\n$5\r\nBLPOP\r\n$9\r\npineapple\r\n$3\r\n0.2\r\n`. your parser `f()` chops it into tokens, step by step.
+
+  * first `*<count>` → how many parts.
+  * then `$<len>` → grab exactly that many bytes.
+  * repeat → get all command words.
+  * now the server can understand what the client *actually wants*, instead of guessing.
+
+basically, the server reads a message, parses it clean, locks memory if it needs to, performs the command, maybe waits if it’s a blocking operation, then sends a response — all while other threads do the same in parallel. chaos tamed by mutexes, order imposed by condition variables.
