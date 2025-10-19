@@ -11,10 +11,12 @@
 #include <mutex>
 #include <chrono>
 #include <deque>
+#include <condition_variable>
 
 std::unordered_map<std::string, std::string> m;
 std::mutex mtx;
 std::unordered_map<std::string, std::deque<std::string>> list;
+std::unordered_map<std::string, std::condition_variable> list_cv;
 
 void DoWork(int client_fd);
 std::vector<std::string> f(const std::string &s);
@@ -95,9 +97,9 @@ void DoWork(int client_fd)
         int time = std::stoi(tokens[4]);
         std::thread([key, time]()
                     {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(time));
-                    std::lock_guard<std::mutex> lock(mtx);
-                    m.erase(key); })
+                      std::this_thread::sleep_for(std::chrono::milliseconds(time));
+                      std::lock_guard<std::mutex> lock(mtx);
+                      m.erase(key); })
             .detach();
       }
     }
@@ -128,7 +130,7 @@ void DoWork(int client_fd)
       else if (it != list.end())
       {
         int N = list[key].size();
-        std::string s = ":" + std::to_string(N) + +"\r\n";
+        std::string s = ":" + std::to_string(N) + "\r\n";
         send(client_fd, s.c_str(), s.size(), 0);
       }
     }
@@ -150,7 +152,6 @@ void DoWork(int client_fd)
           for (int i = 0; i < n; i++)
           {
             std::string curr = list[key][0];
-
             std::string s = "$" + std::to_string(curr.size()) + "\r\n" + curr + "\r\n";
             send(client_fd, s.c_str(), s.size(), 0);
             list[key].pop_front();
@@ -165,6 +166,71 @@ void DoWork(int client_fd)
         }
       }
     }
+    // -------------------- BLPOP --------------------
+    else if (tokens.size() == 3 && tokens[0] == "BLPOP")
+    {
+      std::string key = tokens[1];
+      int timeout = std::stoi(tokens[2]);
+
+      std::unique_lock<std::mutex> lock(mtx);
+
+      // case 1 : list already has elements
+      if (list.count(key) && !list[key].empty())
+      {
+        std::string value = list[key].front();
+        list[key].pop_front();
+        lock.unlock();
+
+        std::string resp = "*" + std::to_string(2) + "\r\n";
+        resp += "$" + std::to_string(key.size()) + "\r\n" + key + "\r\n";
+        resp += "$" + std::to_string(value.size()) + "\r\n" + value + "\r\n";
+        send(client_fd, resp.c_str(), resp.size(), 0);
+      }
+      else
+      {
+        // case 2 : wait for push or timeout
+        if (!list_cv.count(key))
+        {
+          list_cv[key]; // ensure CV exists
+        }
+
+        bool notified = false;
+
+        if (timeout == 0)
+        {
+          list_cv[key].wait(lock, [&]
+                            { return list.count(key) && !list[key].empty(); });
+          notified = true;
+        }
+        else if (timeout > 0)
+        {
+          notified = list_cv[key].wait_for(
+              lock,
+              std::chrono::seconds(timeout),
+              [&]
+              { return list.count(key) && !list[key].empty(); });
+        }
+
+        if (notified)
+        {
+          std::string value = list[key].front();
+          list[key].pop_front();
+          lock.unlock();
+
+          std::string resp = "*" + std::to_string(2) + "\r\n";
+          resp += "$" + std::to_string(key.size()) + "\r\n" + key + "\r\n";
+          resp += "$" + std::to_string(value.size()) + "\r\n" + value + "\r\n";
+          send(client_fd, resp.c_str(), resp.size(), 0);
+        }
+        else
+        {
+          // timeout occurred
+          const char *nil = "$-1\r\n";
+          send(client_fd, nil, strlen(nil), 0);
+        }
+      }
+    }
+    // ------------------------------------------------
     else if (tokens.size() == 4 && tokens[0] == "LRANGE")
     {
       std::lock_guard<std::mutex> lock(mtx);
@@ -239,6 +305,10 @@ void DoWork(int client_fd)
           list[key].push_back(tokens[i]);
       }
 
+      // notify any waiting BLPOP
+      if (list_cv.count(key))
+        list_cv[key].notify_one();
+
       std::string resp = ":" + std::to_string(list[key].size()) + "\r\n";
       send(client_fd, resp.c_str(), resp.size(), 0);
     }
@@ -267,6 +337,10 @@ void DoWork(int client_fd)
           }
           list[key] = s;
         }
+
+        // notify any waiting BLPOP
+        if (list_cv.count(key))
+          list_cv[key].notify_one();
       }
       int t = list[key].size();
       std::string s = ":" + std::to_string(t) + "\r\n";
