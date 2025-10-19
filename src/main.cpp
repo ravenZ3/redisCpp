@@ -191,7 +191,7 @@ void DoWork(int client_fd)
         // case 2 : wait for push or timeout
         if (!list_cv.count(key))
         {
-          list_cv[key]; // ensure CV exists
+          list_cv[key]; // ensure CV 
         }
 
         bool notified = false;
