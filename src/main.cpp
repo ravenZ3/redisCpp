@@ -166,11 +166,11 @@ void DoWork(int client_fd)
         }
       }
     }
-    
+
     else if (tokens.size() == 3 && tokens[0] == "BLPOP")
     {
       std::string key = tokens[1];
-      int timeout = std::stoi(tokens[2]);
+      double timeout = std::stod(tokens[2]);
 
       std::unique_lock<std::mutex> lock(mtx);
 
@@ -206,7 +206,7 @@ void DoWork(int client_fd)
         {
           notified = list_cv[key].wait_for(
               lock,
-              std::chrono::seconds(timeout),
+              std::chrono::duration<double>(timeout),
               [&]
               { return list.count(key) && !list[key].empty(); });
         }
@@ -230,7 +230,7 @@ void DoWork(int client_fd)
         }
       }
     }
-    // ------------------------------------------------
+
     else if (tokens.size() == 4 && tokens[0] == "LRANGE")
     {
       std::lock_guard<std::mutex> lock(mtx);
