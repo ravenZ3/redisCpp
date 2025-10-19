@@ -134,6 +134,28 @@ void DoWork(int client_fd)
         send(client_fd, s.c_str(), s.size(), 0);
       }
     }
+    else if (tokens.size() == 2 && tokens[0] == "TYPE")
+    {
+      std::string key = tokens[1];
+      std::string type;
+      {
+        std::lock_guard<std::mutex> lock(mtx);
+        if (m.find(key) != m.end())
+        {
+          type = "string";
+        }
+        else if (list.find(key) != list.end())
+        {
+          type = "list";
+        }
+        else
+        {
+          type = "none";
+        }
+      }
+      std::string resp = "+" + type + "\r\n";
+      send(client_fd, resp.c_str(), resp.size(), 0);
+    }
     else if (tokens.size() >= 2 && tokens[0] == "LPOP")
     {
       std::string key = tokens[1];
