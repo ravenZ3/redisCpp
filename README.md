@@ -1,4 +1,4 @@
-# Redis-Cpp — Tiny Redis Clone
+# Redis-Cpp - Tiny Redis Clone
 
 this little redis clone knows a handful of commands, each one is like a thought in a stream, simple but purposeful:
 
@@ -43,4 +43,4 @@ so imagine the server is awake, listening. every client that knocks on the door 
   * repeat → get all command words.
   * now the server can understand what the client *actually wants*, instead of guessing.
 
-basically, the server reads a message, parses it clean, locks memory if it needs to, performs the command, maybe waits if it’s a blocking operation, then sends a response — all while other threads do the same in parallel. chaos tamed by mutexes, order imposed by condition variables.
+basically, the server reads a message, parses it clean, locks memory if it needs to, performs the command, maybe waits if it’s a blocking operation, then sends a response - all while other threads do the same in parallel. chaos tamed by mutexes, order imposed by condition variables.
