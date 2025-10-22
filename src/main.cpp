@@ -431,7 +431,7 @@ public:
     {
       if (seq == "*")
       {
-        seq = "0";
+        seq = "1";
       }
       entry_id = ts + "-" + seq;
       Entry e;
