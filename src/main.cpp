@@ -530,7 +530,7 @@ public:
       ctx.streams[stream_key].push_back(e);
     }
 
-    send_simple(client_fd, generated_id);
+    send_bulk(client_fd, generated_id);
   }
 };
 
