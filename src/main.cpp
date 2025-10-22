@@ -392,36 +392,46 @@ public:
 class LPopCommand : public Command
 {
 public:
-  void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
-  {
-    if (tokens.size() < 2)
-      return send_error(client_fd, "wrong number of arguments");
-
-    std::string key = tokens[1];
-    std::lock_guard<std::mutex> lock(ctx.mtx);
-
-    auto it = ctx.lists.find(key);
-    if (it == ctx.lists.end() || it->second.empty())
+    void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
     {
-      send_nil(client_fd);
-      return;
+        if (tokens.size() < 2)
+            return send_error(client_fd, "wrong number of arguments");
+
+        std::string key = tokens[1];
+        std::lock_guard<std::mutex> lock(ctx.mtx);
+
+        auto it = ctx.lists.find(key);
+        if (it == ctx.lists.end() || it->second.empty())
+        {
+            send_nil(client_fd);
+            return;
+        }
+
+        if (tokens.size() == 2)
+        {
+            // LPOP key -> single element, return bulk string
+            std::string val = it->second.front();
+            it->second.pop_front();
+            send_bulk(client_fd, val);
+        }
+        else
+        {
+            // LPOP key N -> multiple elements, return array
+            int N = std::stoi(tokens[2]);
+            if (N < 0) N = 0;
+
+            int count = std::min(N, static_cast<int>(it->second.size()));
+            std::string header = "*" + std::to_string(count) + "\r\n";
+            send(client_fd, header.c_str(), header.size(), 0);
+
+            for (int i = 0; i < count; i++)
+            {
+                std::string val = it->second.front();
+                it->second.pop_front();
+                send_bulk(client_fd, val);
+            }
+        }
     }
-
-    int N = 1;
-    if (tokens.size() == 3)
-      N = std::stoi(tokens[2]);
-
-    int count = std::min(N, static_cast<int>(it->second.size()));
-    std::string header = "*" + std::to_string(count) + "\r\n";
-    send(client_fd, header.c_str(), header.size(), 0);
-
-    for (int i = 0; i < count; i++)
-    {
-      std::string val = it->second.front();
-      it->second.pop_front();
-      send_bulk(client_fd, val);
-    }
-  }
 };
 
 // ============================
