@@ -16,28 +16,28 @@
 
 std::vector<std::string> parseRESP(const std::string &s)
 {
-    std::vector<std::string> tokens;
-    int i = 1;
-    int arr_count = 0;
+  std::vector<std::string> tokens;
+  int i = 1;
+  int arr_count = 0;
+  while (isdigit(s[i]))
+    arr_count = arr_count * 10 + (s[i++] - '0');
+  i += 2;
+
+  for (int j = 0; j < arr_count; ++j)
+  {
+    if (s[i] != '$')
+      break;
+    i++;
+    int len = 0;
     while (isdigit(s[i]))
-        arr_count = arr_count * 10 + (s[i++] - '0');
+      len = len * 10 + (s[i++] - '0');
     i += 2;
+    std::string curr = s.substr(i, len);
+    tokens.push_back(curr);
+    i += len + 2;
+  }
 
-    for (int j = 0; j < arr_count; ++j)
-    {
-        if (s[i] != '$')
-            break;
-        i++;
-        int len = 0;
-        while (isdigit(s[i]))
-            len = len * 10 + (s[i++] - '0');
-        i += 2;
-        std::string curr = s.substr(i, len);
-        tokens.push_back(curr);
-        i += len + 2;
-    }
-
-    return tokens;
+  return tokens;
 }
 
 // ============================
@@ -45,28 +45,28 @@ std::vector<std::string> parseRESP(const std::string &s)
 // ============================
 void send_simple(int fd, const std::string &msg)
 {
-    std::string resp = "+" + msg + "\r\n";
-    send(fd, resp.c_str(), resp.size(), 0);
+  std::string resp = "+" + msg + "\r\n";
+  send(fd, resp.c_str(), resp.size(), 0);
 }
 void send_bulk(int fd, const std::string &msg)
 {
-    std::string resp = "$" + std::to_string(msg.size()) + "\r\n" + msg + "\r\n";
-    send(fd, resp.c_str(), resp.size(), 0);
+  std::string resp = "$" + std::to_string(msg.size()) + "\r\n" + msg + "\r\n";
+  send(fd, resp.c_str(), resp.size(), 0);
 }
 void send_integer(int fd, int num)
 {
-    std::string resp = ":" + std::to_string(num) + "\r\n";
-    send(fd, resp.c_str(), resp.size(), 0);
+  std::string resp = ":" + std::to_string(num) + "\r\n";
+  send(fd, resp.c_str(), resp.size(), 0);
 }
 void send_nil(int fd)
 {
-    const char *resp = "$-1\r\n";
-    send(fd, resp, strlen(resp), 0);
+  const char *resp = "$-1\r\n";
+  send(fd, resp, strlen(resp), 0);
 }
 void send_error(int fd, const std::string &msg)
 {
-    std::string resp = "-ERR " + msg + "\r\n";
-    send(fd, resp.c_str(), resp.size(), 0);
+  std::string resp = "-ERR " + msg + "\r\n";
+  send(fd, resp.c_str(), resp.size(), 0);
 }
 
 // ============================
@@ -74,11 +74,11 @@ void send_error(int fd, const std::string &msg)
 // ============================
 struct ServerContext
 {
-    std::unordered_map<std::string, std::string> kv;
-    std::unordered_map<std::string, std::deque<std::string>> lists;
-    std::unordered_map<std::string, std::condition_variable> cvs;
-    std::unordered_map<std::string, std::vector<std::unordered_map<std::string, std::string>>> streams;
-    std::mutex mtx;
+  std::unordered_map<std::string, std::string> kv;
+  std::unordered_map<std::string, std::deque<std::string>> lists;
+  std::unordered_map<std::string, std::condition_variable> cvs;
+  std::unordered_map<std::string, std::vector<std::unordered_map<std::string, std::string>>> streams;
+  std::mutex mtx;
 };
 
 // ============================
@@ -87,8 +87,8 @@ struct ServerContext
 class Command
 {
 public:
-    virtual ~Command() = default;
-    virtual void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) = 0;
+  virtual ~Command() = default;
+  virtual void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) = 0;
 };
 
 // ============================
@@ -97,304 +97,337 @@ public:
 class PingCommand : public Command
 {
 public:
-    void execute(ServerContext &, int client_fd, const std::vector<std::string> &) override
-    {
-        send_simple(client_fd, "PONG");
-    }
+  void execute(ServerContext &, int client_fd, const std::vector<std::string> &) override
+  {
+    send_simple(client_fd, "PONG");
+  }
 };
 
 class EchoCommand : public Command
 {
 public:
-    void execute(ServerContext &, int client_fd, const std::vector<std::string> &tokens) override
-    {
-        if (tokens.size() < 2)
-            return send_error(client_fd, "wrong number of arguments");
-        send_bulk(client_fd, tokens[1]);
-    }
+  void execute(ServerContext &, int client_fd, const std::vector<std::string> &tokens) override
+  {
+    if (tokens.size() < 2)
+      return send_error(client_fd, "wrong number of arguments");
+    send_bulk(client_fd, tokens[1]);
+  }
 };
 
 class SetCommand : public Command
 {
 public:
-    void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
+  void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
+  {
+    if (tokens.size() < 3)
+      return send_error(client_fd, "wrong number of arguments");
+    std::string key = tokens[1];
+    std::string value = tokens[2];
     {
-        if (tokens.size() < 3)
-            return send_error(client_fd, "wrong number of arguments");
-        std::string key = tokens[1];
-        std::string value = tokens[2];
-        {
-            std::lock_guard<std::mutex> lock(ctx.mtx);
-            ctx.kv[key] = value;
-        }
-        send_simple(client_fd, "OK");
+      std::lock_guard<std::mutex> lock(ctx.mtx);
+      ctx.kv[key] = value;
+    }
+    send_simple(client_fd, "OK");
 
-        // PX expiry option
-        if (tokens.size() > 4 && tokens[3] == "PX")
-        {
-            int ttl = std::stoi(tokens[4]);
-            std::thread([&ctx, key, ttl]()
-                        {
+    // PX expiry option
+    if (tokens.size() > 4 && tokens[3] == "PX")
+    {
+      int ttl = std::stoi(tokens[4]);
+      std::thread([&ctx, key, ttl]()
+                  {
                 std::this_thread::sleep_for(std::chrono::milliseconds(ttl));
                 std::lock_guard<std::mutex> lock(ctx.mtx);
                 ctx.kv.erase(key); })
-                .detach();
-        }
+          .detach();
     }
+  }
 };
 
 class GetCommand : public Command
 {
 public:
-    void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
-    {
-        if (tokens.size() < 2)
-            return send_error(client_fd, "wrong number of arguments");
-        std::string key = tokens[1];
-        std::lock_guard<std::mutex> lock(ctx.mtx);
-        auto it = ctx.kv.find(key);
-        if (it != ctx.kv.end())
-            send_bulk(client_fd, it->second);
-        else
-            send_nil(client_fd);
-    }
+  void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
+  {
+    if (tokens.size() < 2)
+      return send_error(client_fd, "wrong number of arguments");
+    std::string key = tokens[1];
+    std::lock_guard<std::mutex> lock(ctx.mtx);
+    auto it = ctx.kv.find(key);
+    if (it != ctx.kv.end())
+      send_bulk(client_fd, it->second);
+    else
+      send_nil(client_fd);
+  }
 };
 
 class LPushCommand : public Command
 {
 public:
-    void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
-    {
-        if (tokens.size() < 3)
-            return send_error(client_fd, "wrong number of arguments");
-        std::string key = tokens[1];
-        std::lock_guard<std::mutex> lock(ctx.mtx);
-        auto &dq = ctx.lists[key];
-        for (int i = 2; i < tokens.size(); ++i)
-            dq.push_front(tokens[i]);
-        send_integer(client_fd, dq.size());
-        if (ctx.cvs.count(key))
-            ctx.cvs[key].notify_one();
-    }
+  void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
+  {
+    if (tokens.size() < 3)
+      return send_error(client_fd, "wrong number of arguments");
+    std::string key = tokens[1];
+    std::lock_guard<std::mutex> lock(ctx.mtx);
+    auto &dq = ctx.lists[key];
+    for (int i = 2; i < tokens.size(); ++i)
+      dq.push_front(tokens[i]);
+    send_integer(client_fd, dq.size());
+    if (ctx.cvs.count(key))
+      ctx.cvs[key].notify_one();
+  }
 };
 
 class RPushCommand : public Command
 {
 public:
-    void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
-    {
-        if (tokens.size() < 3)
-            return send_error(client_fd, "wrong number of arguments");
-        std::string key = tokens[1];
-        std::lock_guard<std::mutex> lock(ctx.mtx);
-        auto &dq = ctx.lists[key];
-        for (int i = 2; i < tokens.size(); ++i)
-            dq.push_back(tokens[i]);
-        send_integer(client_fd, dq.size());
-        if (ctx.cvs.count(key))
-            ctx.cvs[key].notify_one();
-    }
+  void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
+  {
+    if (tokens.size() < 3)
+      return send_error(client_fd, "wrong number of arguments");
+    std::string key = tokens[1];
+    std::lock_guard<std::mutex> lock(ctx.mtx);
+    auto &dq = ctx.lists[key];
+    for (int i = 2; i < tokens.size(); ++i)
+      dq.push_back(tokens[i]);
+    send_integer(client_fd, dq.size());
+    if (ctx.cvs.count(key))
+      ctx.cvs[key].notify_one();
+  }
 };
 
 class LRangeCommand : public Command
 {
 public:
-    void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
+  void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
+  {
+    if (tokens.size() < 4)
+      return send_error(client_fd, "wrong number of arguments");
+    std::string key = tokens[1];
+    int start = std::stoi(tokens[2]);
+    int stop = std::stoi(tokens[3]);
+
+    std::lock_guard<std::mutex> lock(ctx.mtx);
+    auto it = ctx.lists.find(key);
+    if (it == ctx.lists.end())
     {
-        if (tokens.size() < 4)
-            return send_error(client_fd, "wrong number of arguments");
-        std::string key = tokens[1];
-        int start = std::stoi(tokens[2]);
-        int stop = std::stoi(tokens[3]);
-
-        std::lock_guard<std::mutex> lock(ctx.mtx);
-        auto it = ctx.lists.find(key);
-        if (it == ctx.lists.end())
-        {
-            std::string empty = "*0\r\n";
-            send(client_fd, empty.c_str(), empty.size(), 0);
-            return;
-        }
-
-        auto &v = it->second;
-        int n = v.size();
-        if (start < 0)
-            start = n + start;
-        if (stop < 0)
-            stop = n + stop;
-        if (start < 0)
-            start = 0;
-        if (stop >= n)
-            stop = n - 1;
-        if (start > stop)
-        {
-            std::string empty = "*0\r\n";
-            send(client_fd, empty.c_str(), empty.size(), 0);
-            return;
-        }
-
-        std::string resp = "*" + std::to_string(stop - start + 1) + "\r\n";
-        send(client_fd, resp.c_str(), resp.size(), 0);
-        for (int i = start; i <= stop; ++i)
-            send_bulk(client_fd, v[i]);
+      std::string empty = "*0\r\n";
+      send(client_fd, empty.c_str(), empty.size(), 0);
+      return;
     }
+
+    auto &v = it->second;
+    int n = v.size();
+    if (start < 0)
+      start = n + start;
+    if (stop < 0)
+      stop = n + stop;
+    if (start < 0)
+      start = 0;
+    if (stop >= n)
+      stop = n - 1;
+    if (start > stop)
+    {
+      std::string empty = "*0\r\n";
+      send(client_fd, empty.c_str(), empty.size(), 0);
+      return;
+    }
+
+    std::string resp = "*" + std::to_string(stop - start + 1) + "\r\n";
+    send(client_fd, resp.c_str(), resp.size(), 0);
+    for (int i = start; i <= stop; ++i)
+      send_bulk(client_fd, v[i]);
+  }
 };
 
 class LLenCommand : public Command
 {
 public:
-    void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
-    {
-        if (tokens.size() < 2)
-            return send_error(client_fd, "wrong number of arguments");
-        std::string key = tokens[1];
-        std::lock_guard<std::mutex> lock(ctx.mtx);
-        int len = ctx.lists.count(key) ? ctx.lists[key].size() : 0;
-        send_integer(client_fd, len);
-    }
+  void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
+  {
+    if (tokens.size() < 2)
+      return send_error(client_fd, "wrong number of arguments");
+    std::string key = tokens[1];
+    std::lock_guard<std::mutex> lock(ctx.mtx);
+    int len = ctx.lists.count(key) ? ctx.lists[key].size() : 0;
+    send_integer(client_fd, len);
+  }
 };
 
 class BLPopCommand : public Command
 {
 public:
-    void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
+  void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
+  {
+    if (tokens.size() < 3)
+      return send_error(client_fd, "wrong number of arguments");
+    std::string key = tokens[1];
+    double timeout = std::stod(tokens[2]);
+    std::unique_lock<std::mutex> lock(ctx.mtx);
+
+    auto pop_value = [&](std::deque<std::string> &dq) -> std::string
     {
-        if (tokens.size() < 3)
-            return send_error(client_fd, "wrong number of arguments");
-        std::string key = tokens[1];
-        double timeout = std::stod(tokens[2]);
-        std::unique_lock<std::mutex> lock(ctx.mtx);
+      std::string val = dq.front();
+      dq.pop_front();
+      return val;
+    };
 
-        auto pop_value = [&](std::deque<std::string> &dq) -> std::string
-        {
-            std::string val = dq.front();
-            dq.pop_front();
-            return val;
-        };
+    if (ctx.lists.count(key) && !ctx.lists[key].empty())
+    {
+      std::string val = pop_value(ctx.lists[key]);
+      lock.unlock();
 
-        if (ctx.lists.count(key) && !ctx.lists[key].empty())
-        {
-            std::string val = pop_value(ctx.lists[key]);
-            lock.unlock();
-
-            std::string resp = "*2\r\n";
-            send(client_fd, resp.c_str(), resp.size(), 0);
-            send_bulk(client_fd, key);
-            send_bulk(client_fd, val);
-        }
-        else
-        {
-            if (!ctx.cvs.count(key))
-                ctx.cvs[key];
-            bool notified = false;
-
-            if (timeout == 0)
-            {
-                ctx.cvs[key].wait(lock, [&]
-                                  { return ctx.lists.count(key) && !ctx.lists[key].empty(); });
-                notified = true;
-            }
-            else
-            {
-                notified = ctx.cvs[key].wait_for(lock, std::chrono::duration<double>(timeout),
-                                                 [&]
-                                                 { return ctx.lists.count(key) && !ctx.lists[key].empty(); });
-            }
-
-            if (notified)
-            {
-                std::string val = pop_value(ctx.lists[key]);
-                lock.unlock();
-
-                std::string resp = "*2\r\n";
-                send(client_fd, resp.c_str(), resp.size(), 0);
-                send_bulk(client_fd, key);
-                send_bulk(client_fd, val);
-            }
-            else
-            {
-                const char *nil = "*-1\r\n";
-                send(client_fd, nil, strlen(nil), 0);
-            }
-        }
+      std::string resp = "*2\r\n";
+      send(client_fd, resp.c_str(), resp.size(), 0);
+      send_bulk(client_fd, key);
+      send_bulk(client_fd, val);
     }
+    else
+    {
+      if (!ctx.cvs.count(key))
+        ctx.cvs[key];
+      bool notified = false;
+
+      if (timeout == 0)
+      {
+        ctx.cvs[key].wait(lock, [&]
+                          { return ctx.lists.count(key) && !ctx.lists[key].empty(); });
+        notified = true;
+      }
+      else
+      {
+        notified = ctx.cvs[key].wait_for(lock, std::chrono::duration<double>(timeout),
+                                         [&]
+                                         { return ctx.lists.count(key) && !ctx.lists[key].empty(); });
+      }
+
+      if (notified)
+      {
+        std::string val = pop_value(ctx.lists[key]);
+        lock.unlock();
+
+        std::string resp = "*2\r\n";
+        send(client_fd, resp.c_str(), resp.size(), 0);
+        send_bulk(client_fd, key);
+        send_bulk(client_fd, val);
+      }
+      else
+      {
+        const char *nil = "*-1\r\n";
+        send(client_fd, nil, strlen(nil), 0);
+      }
+    }
+  }
 };
 
-class XAddCommand : public Command {
-    public:
-    void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override {
-        // Implementation for XADD command goes here
-        std::string stream_key = tokens[1];
-        std::string entry_id = tokens[2];
-        
-        if(tokens.size() < 5 || (tokens.size() - 3) % 2 != 0) {
-            return send_error(client_fd, "wrong number of arguments for XADD");
-        }
-        
-        if(ctx.streams.count(stream_key) == 0) {
-            std::unordered_map<std::string, std::string> entry;
-            for(size_t i = 3; i < tokens.size(); i += 2) {
-                entry[tokens[i]] = tokens[i + 1];
-            }
-            ctx.streams[stream_key].push_back(entry);
-        } else {
-            std::unordered_map<std::string, std::string> entry;
-            for(size_t i = 3; i < tokens.size(); i += 2) {
-                entry[tokens[i]] = tokens[i + 1];
-            }
-            ctx.streams[stream_key].push_back(entry);
-        }   
+class XAddCommand : public Command
+{
+public:
+  void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
+  {
+    // Implementation for XADD command goes here
+    std::string stream_key = tokens[1];
+    std::string entry_id = tokens[2];
 
-        // The acknowledgment response is just the entry ID itself
-        send_simple(client_fd, entry_id);
-        
+    if (tokens.size() < 5 || (tokens.size() - 3) % 2 != 0)
+    {
+      return send_error(client_fd, "wrong number of arguments for XADD");
     }
+
+    if (ctx.streams.count(stream_key) == 0)
+    {
+      std::unordered_map<std::string, std::string> entry;
+      for (size_t i = 3; i < tokens.size(); i += 2)
+      {
+        entry[tokens[i]] = tokens[i + 1];
+      }
+      ctx.streams[stream_key].push_back(entry);
+    }
+    else
+    {
+      std::unordered_map<std::string, std::string> entry;
+      for (size_t i = 3; i < tokens.size(); i += 2)
+      {
+        entry[tokens[i]] = tokens[i + 1];
+      }
+      ctx.streams[stream_key].push_back(entry);
+    }
+
+    // The acknowledgment response is just the entry ID itself
+    send_simple(client_fd, entry_id);
+  }
 };
 
-class TypeCommand : public Command {
-    public:
-    void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override {
-        if(tokens.size() < 2) {
-            return send_error(client_fd, "wrong number of arguments for TYPE");
-        }
-        std::string key = tokens[1];
-        std::lock_guard<std::mutex> lock(ctx.mtx);
-        
-        if(ctx.kv.count(key)) {
-            send_simple(client_fd, "string");
-        } else if(ctx.lists.count(key)) {
-            send_simple(client_fd, "list");
-        } else if(ctx.streams.count(key)) {
-            send_simple(client_fd, "stream");
-        } else {
-            send_simple(client_fd, "none");
-        }
+class TypeCommand : public Command
+{
+public:
+  void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
+  {
+    if (tokens.size() < 2)
+    {
+      return send_error(client_fd, "wrong number of arguments for TYPE");
     }
+    std::string key = tokens[1];
+    std::lock_guard<std::mutex> lock(ctx.mtx);
+
+    if (ctx.kv.count(key))
+    {
+      send_simple(client_fd, "string");
+    }
+    else if (ctx.lists.count(key))
+    {
+      send_simple(client_fd, "list");
+    }
+    else if (ctx.streams.count(key))
+    {
+      send_simple(client_fd, "stream");
+    }
+    else
+    {
+      send_simple(client_fd, "none");
+    }
+  }
 };
 
 class LPopCommand : public Command
 {
 public:
-    void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
+  void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
+  {
+    if (tokens.size() < 2)
+      return send_error(client_fd, "wrong number of arguments");
+    std::string key = tokens[1];
+    std::lock_guard<std::mutex> lock(ctx.mtx);
+    auto it = ctx.lists.find(key);
+    if (it == ctx.lists.end() || it->second.empty())
     {
-        if (tokens.size() < 2)
-            return send_error(client_fd, "wrong number of arguments");
-        std::string key = tokens[1];
-        std::lock_guard<std::mutex> lock(ctx.mtx);
-        auto it = ctx.lists.find(key);
-        if (it == ctx.lists.end() || it->second.empty())
-        {
-            send_nil(client_fd);
-            return;
-        }
+      send_nil(client_fd);
+      return;
+    }
+    if (tokens.size() == 3)
+    {
+      int N = std::stoi(tokens[2]);
+      while (N-- != 0)
+      {
+        if (it->second.empty())
+          break;
         std::string val = it->second.front();
         it->second.pop_front();
         send(client_fd, "*2\r\n", 4, 0);
         send_bulk(client_fd, val);
         send_bulk(client_fd, key);
-
+      }
     }
-};  
+    else
+    {
+      std::string val = it->second.front();
+      it->second.pop_front();
+      send(client_fd, "*2\r\n", 4, 0);
+      send_bulk(client_fd, val);
+      send_bulk(client_fd, key);
+    }
+  }
+};
 
 // ============================
 // Command Registry
@@ -403,18 +436,18 @@ std::unordered_map<std::string, std::unique_ptr<Command>> command_map;
 
 void register_commands()
 {
-    command_map["PING"] = std::make_unique<PingCommand>();
-    command_map["ECHO"] = std::make_unique<EchoCommand>();
-    command_map["SET"] = std::make_unique<SetCommand>();
-    command_map["GET"] = std::make_unique<GetCommand>();
-    command_map["LPUSH"] = std::make_unique<LPushCommand>();
-    command_map["LPOP"] = std::make_unique<LPopCommand>();
-    command_map["RPUSH"] = std::make_unique<RPushCommand>();
-    command_map["LRANGE"] = std::make_unique<LRangeCommand>();
-    command_map["LLEN"] = std::make_unique<LLenCommand>();
-    command_map["BLPOP"] = std::make_unique<BLPopCommand>();
-    command_map["XADD"] = std::make_unique<XAddCommand>();
-    command_map["TYPE"] = std::make_unique<TypeCommand>();
+  command_map["PING"] = std::make_unique<PingCommand>();
+  command_map["ECHO"] = std::make_unique<EchoCommand>();
+  command_map["SET"] = std::make_unique<SetCommand>();
+  command_map["GET"] = std::make_unique<GetCommand>();
+  command_map["LPUSH"] = std::make_unique<LPushCommand>();
+  command_map["LPOP"] = std::make_unique<LPopCommand>();
+  command_map["RPUSH"] = std::make_unique<RPushCommand>();
+  command_map["LRANGE"] = std::make_unique<LRangeCommand>();
+  command_map["LLEN"] = std::make_unique<LLenCommand>();
+  command_map["BLPOP"] = std::make_unique<BLPopCommand>();
+  command_map["XADD"] = std::make_unique<XAddCommand>();
+  command_map["TYPE"] = std::make_unique<TypeCommand>();
 }
 
 // ============================
@@ -422,27 +455,27 @@ void register_commands()
 // ============================
 void handle_client(ServerContext &ctx, int client_fd)
 {
-    char buffer[1024];
-    while (true)
-    {
-        ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer) - 1);
-        if (bytes_read <= 0)
-            break;
+  char buffer[1024];
+  while (true)
+  {
+    ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer) - 1);
+    if (bytes_read <= 0)
+      break;
 
-        buffer[bytes_read] = '\0';
-        auto tokens = parseRESP(buffer);
-        if (tokens.empty())
-            continue;
+    buffer[bytes_read] = '\0';
+    auto tokens = parseRESP(buffer);
+    if (tokens.empty())
+      continue;
 
-        std::string cmd = tokens[0];
-        std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::toupper);
+    std::string cmd = tokens[0];
+    std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::toupper);
 
-        if (command_map.count(cmd))
-            command_map[cmd]->execute(ctx, client_fd, tokens);
-        else
-            send_error(client_fd, "unknown command");
-    }
-    close(client_fd);
+    if (command_map.count(cmd))
+      command_map[cmd]->execute(ctx, client_fd, tokens);
+    else
+      send_error(client_fd, "unknown command");
+  }
+  close(client_fd);
 }
 
 // ============================
@@ -450,35 +483,35 @@ void handle_client(ServerContext &ctx, int client_fd)
 // ============================
 int main()
 {
-    ServerContext ctx;
-    register_commands();
+  ServerContext ctx;
+  register_commands();
 
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    int reuse = 1;
-    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+  int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+  int reuse = 1;
+  setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 
-    sockaddr_in server_addr{};
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = INADDR_ANY;
-    server_addr.sin_port = htons(6379);
+  sockaddr_in server_addr{};
+  server_addr.sin_family = AF_INET;
+  server_addr.sin_addr.s_addr = INADDR_ANY;
+  server_addr.sin_port = htons(6379);
 
-    if (bind(server_fd, (sockaddr *)&server_addr, sizeof(server_addr)) != 0)
-    {
-        perror("bind failed");
-        return 1;
-    }
+  if (bind(server_fd, (sockaddr *)&server_addr, sizeof(server_addr)) != 0)
+  {
+    perror("bind failed");
+    return 1;
+  }
 
-    listen(server_fd, 5);
-    std::cout << "Server listening on port 6379...\n";
+  listen(server_fd, 5);
+  std::cout << "Server listening on port 6379...\n";
 
-    while (true)
-    {
-        sockaddr_in client_addr{};
-        socklen_t len = sizeof(client_addr);
-        int client_fd = accept(server_fd, (sockaddr *)&client_addr, &len);
-        std::thread(handle_client, std::ref(ctx), client_fd).detach();
-    }
+  while (true)
+  {
+    sockaddr_in client_addr{};
+    socklen_t len = sizeof(client_addr);
+    int client_fd = accept(server_fd, (sockaddr *)&client_addr, &len);
+    std::thread(handle_client, std::ref(ctx), client_fd).detach();
+  }
 
-    close(server_fd);
-    return 0;
+  close(server_fd);
+  return 0;
 }
