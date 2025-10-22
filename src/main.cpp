@@ -410,7 +410,7 @@ public:
     // Implementation for XADD command goes here
     std::string stream_key = tokens[1];
     std::string entry_id = tokens[2];
-
+    std::string generated_id;
     if (tokens.size() < 5 || (tokens.size() - 3) % 2 != 0)
     {
       return send_error(client_fd, "wrong number of arguments for XADD");
@@ -431,11 +431,12 @@ public:
     {
       if (seq == "*")
       {
-        seq = "1";
+        seq = "0";
       }
       entry_id = ts + "-" + seq;
       Entry e;
       e.id = entry_id;
+      generated_id = entry_id;
       std::unordered_map<std::string, std::string> entry;
       for (size_t i = 3; i < tokens.size(); i += 2)
       {
@@ -484,6 +485,7 @@ public:
 
       Entry e;
       e.id = entry_id;
+      generated_id = entry_id;
       std::unordered_map<std::string, std::string> entry;
       for (size_t i = 3; i < tokens.size(); i += 2)
       {
@@ -493,7 +495,7 @@ public:
     }
 
     // The acknowledgment response is just the entry ID itself
-    send_simple(client_fd, entry_id);
+    send_simple(client_fd, generated_id);
   }
 };
 // ============================
