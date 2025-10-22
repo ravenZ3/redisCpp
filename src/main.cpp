@@ -423,17 +423,37 @@ public:
     {
       return send_error(client_fd, "invalid entry ID format");
     }
-    std::string ts = entry_id.substr(0, dash_pos);
-    std::string seq = entry_id.substr(dash_pos + 1);
+
+    std::string ts, seq;
+    if (entry_id != "*")
+    {
+      ts = entry_id.substr(0, dash_pos);
+      seq = entry_id.substr(dash_pos + 1);
+    }
 
     std::lock_guard<std::mutex> lock(ctx.mtx);
     if (ctx.streams.count(stream_key) == 0)
     {
-      if (seq == "*")
+      // New stream
+      if (entry_id == "*")
       {
-        seq = "1";
+        ts = std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::system_clock::now().time_since_epoch())
+                                .count());
+        seq = "0";
       }
+      else if (seq == "*")
+      {
+        seq = "0";
+      }
+
       entry_id = ts + "-" + seq;
+
+      if (ts == "0" && seq == "0")
+      {
+        return send_error(client_fd, "The ID specified in XADD must be greater than 0-0");
+      }
+
       Entry e;
       e.id = entry_id;
       generated_id = entry_id;
@@ -446,15 +466,50 @@ public:
     }
     else
     {
+      // Existing stream
       auto &last = ctx.streams[stream_key].back();
-      // validation of entry ID
       std::string last_id = last.id;
       size_t last_dash_pos = last_id.find('-');
       long long int last_ts = std::stoll(last_id.substr(0, last_dash_pos));
       long long int last_seq = std::stoll(last_id.substr(last_dash_pos + 1));
 
-      if (entry_id != "*")
+      if (entry_id == "*")
       {
+        // Full auto-generation
+        if (last_seq == INT64_MAX)
+        {
+          ts = std::to_string(last_ts + 1);
+          seq = "0";
+        }
+        else
+        {
+          ts = std::to_string(last_ts);
+          seq = std::to_string(last_seq + 1);
+        }
+        entry_id = ts + "-" + seq;
+      }
+      else if (seq == "*")
+      {
+        // Partial auto-generation (timestamp provided, sequence auto-generated)
+        long long int current_ts = std::stoll(ts);
+
+        if (current_ts > last_ts)
+        {
+          seq = "0";
+        }
+        else if (current_ts == last_ts)
+        {
+          seq = std::to_string(last_seq + 1);
+        }
+        else
+        {
+          return send_error(client_fd, "The ID specified in XADD is equal or smaller than the target stream top item");
+        }
+        entry_id = ts + "-" + seq;
+      }
+      else
+      {
+        // Full ID provided - validate it
         if (std::stoll(ts) == 0 && std::stoll(seq) == 0)
         {
           return send_error(client_fd, "The ID specified in XADD must be greater than 0-0");
@@ -466,22 +521,6 @@ public:
           return send_error(client_fd, "The ID specified in XADD is equal or smaller than the target stream top item");
         }
       }
-      else if (seq == "*")
-      {
-        // generate new ID
-        if ((last_seq) == INT64_MAX)
-        {
-          ts = std::to_string((last_ts) + 1);
-          seq = "0";
-        }
-        else
-        {
-          ts = std::to_string(last_ts);
-          seq = std::to_string(last_seq + 1);
-        }
-        entry_id = ts + "-" + seq;
-      }
-      
 
       Entry e;
       e.id = entry_id;
@@ -494,10 +533,10 @@ public:
       ctx.streams[stream_key].push_back(e);
     }
 
-    // The acknowledgment response is just the entry ID itself
     send_simple(client_fd, generated_id);
   }
 };
+
 // ============================
 // Command Registry
 // ============================
