@@ -327,7 +327,7 @@ class XAddCommand : public Command {
         std::string stream_key = tokens[1];
         std::string entry_id = tokens[2];
         
-        if(tokens.size() < 5 || (tokens.size() - 4) % 2 != 0) {
+        if(tokens.size() < 5 || (tokens.size() - 3) % 2 != 0) {
             return send_error(client_fd, "wrong number of arguments for XADD");
         }
         
