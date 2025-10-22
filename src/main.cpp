@@ -426,15 +426,14 @@ public:
     std::string ts = entry_id.substr(0, dash_pos);
     std::string seq = entry_id.substr(dash_pos + 1);
 
-    if (std::all_of(ts.begin(), ts.end(), ::isdigit) == false ||
-        std::all_of(seq.begin(), seq.end(), ::isdigit) == false)
-    {
-      return send_error(client_fd, "invalid entry ID format");
-    }
-
     std::lock_guard<std::mutex> lock(ctx.mtx);
     if (ctx.streams.count(stream_key) == 0)
     {
+      if (seq == "*")
+      {
+        seq = "0";
+      }
+      entry_id = ts + "-" + seq;
       Entry e;
       e.id = entry_id;
       std::unordered_map<std::string, std::string> entry;
@@ -450,8 +449,8 @@ public:
       // validation of entry ID
       std::string last_id = last.id;
       size_t last_dash_pos = last_id.find('-');
-      std::string last_ts = last_id.substr(0, last_dash_pos);
-      std::string last_seq = last_id.substr(last_dash_pos + 1);
+      long long int last_ts = std::stoll(last_id.substr(0, last_dash_pos));
+      long long int last_seq = std::stoll(last_id.substr(last_dash_pos + 1));
 
       if (entry_id != "*")
       {
@@ -459,27 +458,29 @@ public:
         {
           return send_error(client_fd, "The ID specified in XADD must be greater than 0-0");
         }
-        if (std::stoll(ts) < std::stoll(last_ts) ||
-            (std::stoll(ts) == std::stoll(last_ts) && std::stoll(seq) <= std::stoll(last_seq)))
+
+        if ((std::stoll(ts) < last_ts) ||
+            (std::stoll(ts) == last_ts && std::stoll(seq) <= last_seq))
         {
           return send_error(client_fd, "The ID specified in XADD is equal or smaller than the target stream top item");
         }
       }
-      else
+      else if (seq == "*")
       {
         // generate new ID
-        if (std::stoll(last_seq) == INT64_MAX)
+        if ((last_seq) == INT64_MAX)
         {
-          ts = std::to_string(std::stoll(last_ts) + 1);
+          ts = std::to_string((last_ts) + 1);
           seq = "0";
         }
         else
         {
-          ts = last_ts;
-          seq = std::to_string(std::stoll(last_seq) + 1);
+          ts = std::to_string(last_ts);
+          seq = std::to_string(last_seq + 1);
         }
         entry_id = ts + "-" + seq;
       }
+      
 
       Entry e;
       e.id = entry_id;
