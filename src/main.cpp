@@ -389,6 +389,8 @@ public:
         }
         std::string val = it->second.front();
         it->second.pop_front();
+        send(client_fd, "*2\r\n", 4, 0);
+        send_bulk(client_fd, key);
         send_bulk(client_fd, val);
     }
 };  
