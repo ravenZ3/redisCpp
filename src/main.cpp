@@ -372,7 +372,7 @@ class TypeCommand : public Command {
     }
 };
 
-class LPOPCommand : public Command
+class LPopCommand : public Command
 {
 public:
     void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
