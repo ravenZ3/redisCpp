@@ -430,6 +430,7 @@ public:
       ts = entry_id.substr(0, dash_pos);
       seq = entry_id.substr(dash_pos + 1);
     }
+    
 
     std::lock_guard<std::mutex> lock(ctx.mtx);
     if (ctx.streams.count(stream_key) == 0)
