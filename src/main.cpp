@@ -455,7 +455,7 @@ public:
 
       if (entry_id != "*")
       {
-        if (std::stoll(ts) == 0 || std::stoll(seq) == 0)
+        if (std::stoll(ts) == 0 && std::stoll(seq) == 0)
         {
           return send_error(client_fd, "The ID specified in XADD must be greater than 0-0");
         }
