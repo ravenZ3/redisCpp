@@ -444,23 +444,19 @@ public:
       }
       else if (seq == "*")
       {
-        seq = "0";
+        seq = "1";
       }
 
       entry_id = ts + "-" + seq;
 
-      if (ts == "0" && seq == "0")
-      {
-        return send_error(client_fd, "The ID specified in XADD must be greater than 0-0");
-      }
-
+ 
       Entry e;
       e.id = entry_id;
       generated_id = entry_id;
-      std::unordered_map<std::string, std::string> entry;
+      // Store field-value pairs in the Entry's fields map
       for (size_t i = 3; i < tokens.size(); i += 2)
       {
-        entry[tokens[i]] = tokens[i + 1];
+        e.fields[tokens[i]] = tokens[i + 1];
       }
       ctx.streams[stream_key].push_back(e);
     }
@@ -525,10 +521,10 @@ public:
       Entry e;
       e.id = entry_id;
       generated_id = entry_id;
-      std::unordered_map<std::string, std::string> entry;
+      // Store field-value pairs in the Entry's fields map
       for (size_t i = 3; i < tokens.size(); i += 2)
       {
-        entry[tokens[i]] = tokens[i + 1];
+        e.fields[tokens[i]] = tokens[i + 1];
       }
       ctx.streams[stream_key].push_back(e);
     }
