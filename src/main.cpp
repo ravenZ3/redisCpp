@@ -75,7 +75,7 @@ void send_error(int fd, const std::string &msg)
 struct Entry
 {
   std::string id;
-  std::unordered_map<std::string, std::string> fields;
+  std::vector<std::pair<std::string, std::string>> fields;
 };
 struct ServerContext
 {
@@ -430,7 +430,6 @@ public:
       ts = entry_id.substr(0, dash_pos);
       seq = entry_id.substr(dash_pos + 1);
     }
-    
 
     std::lock_guard<std::mutex> lock(ctx.mtx);
     if (ctx.streams.count(stream_key) == 0)
@@ -450,14 +449,13 @@ public:
 
       entry_id = ts + "-" + seq;
 
- 
       Entry e;
       e.id = entry_id;
       generated_id = entry_id;
       // Store field-value pairs in the Entry's fields map
       for (size_t i = 3; i < tokens.size(); i += 2)
       {
-        e.fields[tokens[i]] = tokens[i + 1];
+        e.fields.emplace_back(tokens[i], tokens[i + 1]);
       }
       ctx.streams[stream_key].push_back(e);
     }
@@ -525,7 +523,7 @@ public:
       // Store field-value pairs in the Entry's fields map
       for (size_t i = 3; i < tokens.size(); i += 2)
       {
-        e.fields[tokens[i]] = tokens[i + 1];
+        e.fields.emplace_back(tokens[i], tokens[i + 1]);
       }
       ctx.streams[stream_key].push_back(e);
     }
@@ -534,6 +532,83 @@ public:
   }
 };
 
+class XRangeCommand : public Command
+{
+public:
+  void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
+  {
+    std::string key = tokens[1];
+    std::string start = tokens[2], end = tokens[3];
+
+    std::lock_guard<std::mutex> lock(ctx.mtx);
+
+    if (ctx.streams.find(key) == ctx.streams.end() || ctx.streams[key].empty())
+    {
+      send(client_fd, "*0\r\n", 4, 0); // empty array
+      return;
+    }
+
+    std::deque<Entry> &stream = ctx.streams[key];
+
+    if (start == "-")
+      start = stream.front().id;
+    if (end == "+")
+      end = stream.back().id;
+
+    // collect matching entries
+    std::vector<Entry *> matches;
+    for (auto &entry : stream)
+    {
+      if (in_range(entry.id, start, end))
+      {
+        matches.push_back(&entry);
+      }
+    }
+
+    // send top-level array header
+    std::string header = "*" + std::to_string(matches.size()) + "\r\n";
+    send(client_fd, header.c_str(), header.size(), 0);
+
+    // send each entry as nested RESP array
+    for (auto *entry : matches)
+    {
+      std::string entry_header = "*2\r\n";
+      send(client_fd, entry_header.c_str(), entry_header.size(), 0);
+      send_bulk(client_fd, entry->id);
+
+      std::string fields_header = "*" + std::to_string(entry->fields.size() * 2) + "\r\n";
+      send(client_fd, fields_header.c_str(), fields_header.size(), 0);
+      for (const auto &kv : entry->fields)
+      {
+        send_bulk(client_fd, kv.first);
+        send_bulk(client_fd, kv.second);
+      }
+    }
+  };
+
+private:
+  bool in_range(const std::string &id, const std::string &start, const std::string &end)
+  {
+    auto parse = [](const std::string &s)
+    {
+      size_t dash = s.find('-');
+      if (dash == std::string::npos)
+        return std::pair<long long, long long>(std::stoll(s), 0);
+      else
+      {
+        return std::pair<long long, long long>(
+            std::stoll(s.substr(0, dash)), std::stoll(s.substr(dash + 1)));
+      }
+    };
+    auto [t1, s1] = parse(start);
+    auto [t2, s2] = parse(end);
+    auto [t, s] = parse(id);
+
+    bool ge_start = (t > t1) || (t == t1 && s >= s1);
+    bool le_end = (t < t2) || (t == t2 && s <= s2);
+    return ge_start && le_end;
+  }
+};
 
 // ============================
 // Command Registry
@@ -554,6 +629,7 @@ void register_commands()
   command_map["BLPOP"] = std::make_unique<BLPopCommand>();
   command_map["XADD"] = std::make_unique<XAddCommand>();
   command_map["TYPE"] = std::make_unique<TypeCommand>();
+  command_map["XRANGE"] = std::make_unique<XRangeCommand>();
 }
 
 // ============================
