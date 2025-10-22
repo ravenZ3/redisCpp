@@ -389,6 +389,7 @@ void register_commands()
     command_map["LLEN"] = std::make_unique<LLenCommand>();
     command_map["BLPOP"] = std::make_unique<BLPopCommand>();
     command_map["XADD"] = std::make_unique<XAddCommand>();
+    command_map["TYPE"] = std::make_unique<TypeCommad>();
 }
 
 // ============================
