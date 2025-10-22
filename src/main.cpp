@@ -72,12 +72,17 @@ void send_error(int fd, const std::string &msg)
 // ============================
 // Server Context (shared state)
 // ============================
+struct Entry
+{
+  std::string id;
+  std::unordered_map<std::string, std::string> fields;
+};
 struct ServerContext
 {
   std::unordered_map<std::string, std::string> kv;
   std::unordered_map<std::string, std::deque<std::string>> lists;
   std::unordered_map<std::string, std::condition_variable> cvs;
-  std::unordered_map<std::string, std::vector<std::unordered_map<std::string, std::string>>> streams;
+  std::unordered_map<std::string, std::deque<Entry>> streams;
   std::mutex mtx;
 };
 
@@ -320,44 +325,6 @@ public:
   }
 };
 
-class XAddCommand : public Command
-{
-public:
-  void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
-  {
-    // Implementation for XADD command goes here
-    std::string stream_key = tokens[1];
-    std::string entry_id = tokens[2];
-
-    if (tokens.size() < 5 || (tokens.size() - 3) % 2 != 0)
-    {
-      return send_error(client_fd, "wrong number of arguments for XADD");
-    }
-
-    if (ctx.streams.count(stream_key) == 0)
-    {
-      std::unordered_map<std::string, std::string> entry;
-      for (size_t i = 3; i < tokens.size(); i += 2)
-      {
-        entry[tokens[i]] = tokens[i + 1];
-      }
-      ctx.streams[stream_key].push_back(entry);
-    }
-    else
-    {
-      std::unordered_map<std::string, std::string> entry;
-      for (size_t i = 3; i < tokens.size(); i += 2)
-      {
-        entry[tokens[i]] = tokens[i + 1];
-      }
-      ctx.streams[stream_key].push_back(entry);
-    }
-
-    // The acknowledgment response is just the entry ID itself
-    send_simple(client_fd, entry_id);
-  }
-};
-
 class TypeCommand : public Command
 {
 public:
@@ -392,48 +359,142 @@ public:
 class LPopCommand : public Command
 {
 public:
-    void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
+  void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
+  {
+    if (tokens.size() < 2)
+      return send_error(client_fd, "wrong number of arguments");
+
+    std::string key = tokens[1];
+    std::lock_guard<std::mutex> lock(ctx.mtx);
+
+    auto it = ctx.lists.find(key);
+    if (it == ctx.lists.end() || it->second.empty())
     {
-        if (tokens.size() < 2)
-            return send_error(client_fd, "wrong number of arguments");
+      send_nil(client_fd);
+      return;
+    }
 
-        std::string key = tokens[1];
-        std::lock_guard<std::mutex> lock(ctx.mtx);
+    if (tokens.size() == 2)
+    {
+      // LPOP key -> single element, return bulk string
+      std::string val = it->second.front();
+      it->second.pop_front();
+      send_bulk(client_fd, val);
+    }
+    else
+    {
+      // LPOP key N -> multiple elements, return array
+      int N = std::stoi(tokens[2]);
+      if (N < 0)
+        N = 0;
 
-        auto it = ctx.lists.find(key);
-        if (it == ctx.lists.end() || it->second.empty())
+      int count = std::min(N, static_cast<int>(it->second.size()));
+      std::string header = "*" + std::to_string(count) + "\r\n";
+      send(client_fd, header.c_str(), header.size(), 0);
+
+      for (int i = 0; i < count; i++)
+      {
+        std::string val = it->second.front();
+        it->second.pop_front();
+        send_bulk(client_fd, val);
+      }
+    }
+  }
+};
+
+class XAddCommand : public Command
+{
+public:
+  void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
+  {
+    // Implementation for XADD command goes here
+    std::string stream_key = tokens[1];
+    std::string entry_id = tokens[2];
+
+    if (tokens.size() < 5 || (tokens.size() - 3) % 2 != 0)
+    {
+      return send_error(client_fd, "wrong number of arguments for XADD");
+    }
+
+    // validate entry ID format (basic validation)
+    size_t dash_pos = entry_id.find('-');
+
+    if (entry_id != "*" && dash_pos == std::string::npos)
+    {
+      return send_error(client_fd, "invalid entry ID format");
+    }
+    std::string ts = entry_id.substr(0, dash_pos);
+    std::string seq = entry_id.substr(dash_pos + 1);
+
+    if (std::all_of(ts.begin(), ts.end(), ::isdigit) == false ||
+        std::all_of(seq.begin(), seq.end(), ::isdigit) == false)
+    {
+      return send_error(client_fd, "invalid entry ID format");
+    }
+
+    std::lock_guard<std::mutex> lock(ctx.mtx);
+    if (ctx.streams.count(stream_key) == 0)
+    {
+      Entry e;
+      e.id = entry_id;
+      std::unordered_map<std::string, std::string> entry;
+      for (size_t i = 3; i < tokens.size(); i += 2)
+      {
+        entry[tokens[i]] = tokens[i + 1];
+      }
+      ctx.streams[stream_key].push_back(e);
+    }
+    else
+    {
+      auto &last = ctx.streams[stream_key].back();
+      // validation of entry ID
+      std::string last_id = last.id;
+      size_t last_dash_pos = last_id.find('-');
+      std::string last_ts = last_id.substr(0, last_dash_pos);
+      std::string last_seq = last_id.substr(last_dash_pos + 1);
+
+      if (entry_id != "*")
+      {
+        if (std::stoll(ts) == 0 || std::stoll(seq) == 0)
         {
-            send_nil(client_fd);
-            return;
+          return send_error(client_fd, "The ID specified in XADD must be greater than 0-0");
         }
-
-        if (tokens.size() == 2)
+        if (std::stoll(ts) < std::stoll(last_ts) ||
+            (std::stoll(ts) == std::stoll(last_ts) && std::stoll(seq) <= std::stoll(last_seq)))
         {
-            // LPOP key -> single element, return bulk string
-            std::string val = it->second.front();
-            it->second.pop_front();
-            send_bulk(client_fd, val);
+          return send_error(client_fd, "The ID specified in XADD is equal or smaller than the target stream top item");
+        }
+      }
+      else
+      {
+        // generate new ID
+        if (std::stoll(last_seq) == INT64_MAX)
+        {
+          ts = std::to_string(std::stoll(last_ts) + 1);
+          seq = "0";
         }
         else
         {
-            // LPOP key N -> multiple elements, return array
-            int N = std::stoi(tokens[2]);
-            if (N < 0) N = 0;
-
-            int count = std::min(N, static_cast<int>(it->second.size()));
-            std::string header = "*" + std::to_string(count) + "\r\n";
-            send(client_fd, header.c_str(), header.size(), 0);
-
-            for (int i = 0; i < count; i++)
-            {
-                std::string val = it->second.front();
-                it->second.pop_front();
-                send_bulk(client_fd, val);
-            }
+          ts = last_ts;
+          seq = std::to_string(std::stoll(last_seq) + 1);
         }
-    }
-};
+        entry_id = ts + "-" + seq;
+      }
 
+      Entry e;
+      e.id = entry_id;
+      std::unordered_map<std::string, std::string> entry;
+      for (size_t i = 3; i < tokens.size(); i += 2)
+      {
+        entry[tokens[i]] = tokens[i + 1];
+      }
+      ctx.streams[stream_key].push_back(e);
+    }
+
+    // The acknowledgment response is just the entry ID itself
+    send_simple(client_fd, entry_id);
+  }
+};
 // ============================
 // Command Registry
 // ============================
