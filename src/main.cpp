@@ -396,35 +396,30 @@ public:
   {
     if (tokens.size() < 2)
       return send_error(client_fd, "wrong number of arguments");
+
     std::string key = tokens[1];
     std::lock_guard<std::mutex> lock(ctx.mtx);
+
     auto it = ctx.lists.find(key);
     if (it == ctx.lists.end() || it->second.empty())
     {
       send_nil(client_fd);
       return;
     }
+
+    int N = 1;
     if (tokens.size() == 3)
-    {
-      int N = std::stoi(tokens[2]);
-      while (N-- != 0)
-      {
-        if (it->second.empty())
-          break;
-        std::string val = it->second.front();
-        it->second.pop_front();
-        send(client_fd, "*2\r\n", 4, 0);
-        send_bulk(client_fd, val);
-        send_bulk(client_fd, key);
-      }
-    }
-    else
+      N = std::stoi(tokens[2]);
+
+    int count = std::min(N, static_cast<int>(it->second.size()));
+    std::string header = "*" + std::to_string(count) + "\r\n";
+    send(client_fd, header.c_str(), header.size(), 0);
+
+    for (int i = 0; i < count; i++)
     {
       std::string val = it->second.front();
       it->second.pop_front();
-      send(client_fd, "*2\r\n", 4, 0);
       send_bulk(client_fd, val);
-      send_bulk(client_fd, key);
     }
   }
 };
