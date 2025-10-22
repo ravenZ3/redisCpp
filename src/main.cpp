@@ -351,6 +351,27 @@ class XAddCommand : public Command {
     }
 };
 
+class TypeCommad : public Command {
+    public:
+    void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override {
+        if(tokens.size() < 2) {
+            return send_error(client_fd, "wrong number of arguments for TYPE");
+        }
+        std::string key = tokens[1];
+        std::lock_guard<std::mutex> lock(ctx.mtx);
+        
+        if(ctx.kv.count(key)) {
+            send_simple(client_fd, "string");
+        } else if(ctx.lists.count(key)) {
+            send_simple(client_fd, "list");
+        } else if(ctx.streams.count(key)) {
+            send_simple(client_fd, "stream");
+        } else {
+            send_simple(client_fd, "none");
+        }
+    }
+};
+
 // ============================
 // Command Registry
 // ============================
