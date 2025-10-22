@@ -351,7 +351,7 @@ class XAddCommand : public Command {
     }
 };
 
-class TypeCommad : public Command {
+class TypeCommand : public Command {
     public:
     void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override {
         if(tokens.size() < 2) {
@@ -372,6 +372,27 @@ class TypeCommad : public Command {
     }
 };
 
+class LPOPCommand : public Command
+{
+public:
+    void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
+    {
+        if (tokens.size() < 2)
+            return send_error(client_fd, "wrong number of arguments");
+        std::string key = tokens[1];
+        std::lock_guard<std::mutex> lock(ctx.mtx);
+        auto it = ctx.lists.find(key);
+        if (it == ctx.lists.end() || it->second.empty())
+        {
+            send_nil(client_fd);
+            return;
+        }
+        std::string val = it->second.front();
+        it->second.pop_front();
+        send_bulk(client_fd, val);
+    }
+};  
+
 // ============================
 // Command Registry
 // ============================
@@ -384,12 +405,13 @@ void register_commands()
     command_map["SET"] = std::make_unique<SetCommand>();
     command_map["GET"] = std::make_unique<GetCommand>();
     command_map["LPUSH"] = std::make_unique<LPushCommand>();
+    command_map["LPOP"] = std::make_unique<LPopCommand>();
     command_map["RPUSH"] = std::make_unique<RPushCommand>();
     command_map["LRANGE"] = std::make_unique<LRangeCommand>();
     command_map["LLEN"] = std::make_unique<LLenCommand>();
     command_map["BLPOP"] = std::make_unique<BLPopCommand>();
     command_map["XADD"] = std::make_unique<XAddCommand>();
-    command_map["TYPE"] = std::make_unique<TypeCommad>();
+    command_map["TYPE"] = std::make_unique<TypeCommand>();
 }
 
 // ============================
