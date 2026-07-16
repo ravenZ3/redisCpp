@@ -6,6 +6,8 @@
 #include <deque>
 #include <sys/socket.h>
 #include <sys/epoll.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -671,6 +673,15 @@ void set_nonblocking(int fd)
   fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
+// Without this, Nagle's algorithm on the server side batches/delays our
+// small RESP response packets against the client's delayed-ACK timer,
+// which cripples pipelined throughput.
+void set_nodelay(int fd)
+{
+  int flag = 1;
+  setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
+}
+
 // Wakes clients blocked on `key` (in FIFO order) as long as there's data for
 // them. A woken client's remaining buffered input is drained immediately,
 // since it may have pipelined further commands while it was waiting.
@@ -783,6 +794,7 @@ void accept_connections(ServerContext &ctx, int epfd, int server_fd)
       return; // EAGAIN/EWOULDBLOCK: no more pending connections
 
     set_nonblocking(client_fd);
+    set_nodelay(client_fd);
 
     epoll_event ev{};
     ev.events = EPOLLIN;

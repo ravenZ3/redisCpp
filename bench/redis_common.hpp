@@ -16,6 +16,8 @@
 #include <cstring>
 #include <deque>
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -652,6 +654,15 @@ inline void set_nonblocking(int fd)
   fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
+// Without this, Nagle's algorithm on the server side batches/delays our
+// small RESP response packets against the client's delayed-ACK timer,
+// which cripples pipelined throughput (observed ~6x hit in practice).
+inline void set_nodelay(int fd)
+{
+  int flag = 1;
+  setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
+}
+
 inline void serve_blocked_waiters(ServerContext &ctx, const std::string &key)
 {
   auto wit = ctx.blocked_on_key.find(key);
@@ -772,6 +783,7 @@ inline void accept_connections(ServerContext &ctx, int server_fd, RegisterFn reg
     }
 
     set_nonblocking(client_fd);
+    set_nodelay(client_fd);
 
     auto client = std::make_unique<Client>();
     client->fd = client_fd;
