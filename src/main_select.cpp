@@ -1,34 +1,43 @@
-// select() variant of the benchmark server, for comparison against
-// main_epoll.cpp. Command logic is byte-identical (shared via
-// redis_common.hpp) — only the multiplexer differs.
+// select() variant of the server, built for comparison against epoll.
+// Command logic is shared; only the multiplexer differs.
+//
+//   redis-select [port]   (default 6379)
 //
 // select() has two well-known scaling problems this variant deliberately
 // keeps rather than works around, since they're the point of the benchmark:
 //   1. FD_SETSIZE (typically 1024): fds at or above it can't be watched at
-//      all. We reject those connections outright instead of corrupting the
+//      all. Those connections are rejected instead of corrupting the
 //      fd_set bitmap.
-//   2. The read set has to be rebuilt from scratch and rescanned linearly
-//      every single loop iteration, so cost grows with the highest fd
-//      number in use regardless of how many connections are actually busy.
-#include "redis_common.hpp"
-#include <sys/select.h>
+//   2. The read set has to be rebuilt and rescanned linearly every loop
+//      iteration, so cost grows with the highest fd in use regardless of
+//      how many connections are actually busy.
+
+#include "server.hpp"
+
+#include <algorithm>
 #include <cstdlib>
+#include <iostream>
+#include <sys/select.h>
+#include <vector>
+
+namespace
+{
+class SelectPoller : public Poller
+{
+public:
+  bool add(int fd) override { return fd < FD_SETSIZE; }
+  void remove(int) override {} // the fd_set is rebuilt every iteration
+};
+} // namespace
 
 int main(int argc, char **argv)
 {
   int port = argc > 1 ? std::atoi(argv[1]) : 6379;
 
   ServerContext ctx;
-  register_commands();
-
+  SelectPoller poller;
   int server_fd = make_listen_socket(port);
   std::cout << "[select] listening on port " << port << "...\n";
-
-  auto register_fd = [&](int fd) -> bool
-  {
-    return fd < FD_SETSIZE;
-  };
-  auto unregister_fd = [&](int) {};
 
   while (true)
   {
@@ -57,7 +66,7 @@ int main(int argc, char **argv)
     if (n > 0)
     {
       if (FD_ISSET(server_fd, &read_fds))
-        accept_connections(ctx, server_fd, register_fd);
+        accept_connections(ctx, server_fd, poller);
 
       // Snapshot first: handling one fd (BLPOP wake-ups, disconnects) can
       // mutate ctx.clients while we're mid-iteration.
@@ -67,10 +76,8 @@ int main(int argc, char **argv)
           ready_fds.push_back(fd);
 
       for (int fd : ready_fds)
-      {
         if (ctx.clients.count(fd))
-          handle_client_event(ctx, fd, unregister_fd);
-      }
+          handle_client_event(ctx, fd, poller);
     }
 
     sweep_timeouts(ctx);
