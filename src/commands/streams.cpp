@@ -16,10 +16,10 @@ class XAddCommand : public Command
 public:
   void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
   {
-    std::string stream_key = tokens[1];
-    std::string entry_id = tokens[2];
     if (tokens.size() < 5 || (tokens.size() - 3) % 2 != 0)
       return send_error(client_fd, "wrong number of arguments for XADD");
+    std::string stream_key = tokens[1];
+    std::string entry_id = tokens[2];
 
     size_t dash_pos = entry_id.find('-');
     if (entry_id != "*" && dash_pos == std::string::npos)
@@ -109,6 +109,8 @@ class XRangeCommand : public Command
 public:
   void execute(ServerContext &ctx, int client_fd, const std::vector<std::string> &tokens) override
   {
+    if (tokens.size() < 4)
+      return send_error(client_fd, "wrong number of arguments for XRANGE");
     const std::string &key = tokens[1];
     std::string start = tokens[2], end = tokens[3];
 

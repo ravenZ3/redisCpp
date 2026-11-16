@@ -35,14 +35,13 @@ public:
     if (tokens.size() < 3)
       return send_error(client_fd, "wrong number of arguments");
     const std::string &key = tokens[1];
+    bool has_ttl = tokens.size() > 4 && tokens[3] == "PX";
+    int ttl = has_ttl ? std::stoi(tokens[4]) : 0; // parse before mutating
+
     ctx.kv[key] = tokens[2];
     ctx.expires.erase(key);
-
-    if (tokens.size() > 4 && tokens[3] == "PX")
-    {
-      int ttl = std::stoi(tokens[4]);
+    if (has_ttl)
       ctx.expires[key] = std::chrono::steady_clock::now() + std::chrono::milliseconds(ttl);
-    }
 
     send_simple(client_fd, "OK");
   }

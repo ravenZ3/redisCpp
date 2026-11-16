@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fcntl.h>
+#include <stdexcept>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
@@ -143,8 +144,18 @@ void process_buffer(ServerContext &ctx, int fd)
 
     size_t consumed;
     std::vector<std::string> tokens;
-    if (!tryParseRESP(client.inbuf, consumed, tokens))
+    try
+    {
+      if (!tryParseRESP(client.inbuf, consumed, tokens))
+        return;
+    }
+    catch (const std::exception &)
+    {
+      // Malformed length prefix: the stream can't be resynchronized.
+      send_error(fd, "Protocol error");
+      client.inbuf.clear();
       return;
+    }
     client.inbuf.erase(0, consumed);
     if (tokens.empty())
       continue;
@@ -152,10 +163,27 @@ void process_buffer(ServerContext &ctx, int fd)
     std::string name = tokens[0];
     std::transform(name.begin(), name.end(), name.begin(), ::toupper);
 
-    if (Command *cmd = find_command(name))
-      cmd->execute(ctx, fd, tokens);
-    else
+    Command *cmd = find_command(name);
+    if (!cmd)
+    {
       send_error(fd, "unknown command");
+      continue;
+    }
+    // Commands parse numbers with std::stoi/stod/stoll, which throw on bad
+    // input. Every command parses before it mutates state, so replying with
+    // an error here leaves the keyspace untouched.
+    try
+    {
+      cmd->execute(ctx, fd, tokens);
+    }
+    catch (const std::invalid_argument &)
+    {
+      send_error(fd, "value is not an integer or out of range");
+    }
+    catch (const std::out_of_range &)
+    {
+      send_error(fd, "value is not an integer or out of range");
+    }
   }
 }
 

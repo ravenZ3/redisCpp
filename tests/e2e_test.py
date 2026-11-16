@@ -265,6 +265,36 @@ class E2E(unittest.TestCase):
         self.check("XRANGE", "st5", "0", "0", expect=b"*0\r\n")
         self.check("XRANGE", "nostream", "-", "+", expect=b"*0\r\n")
 
+    # --- bad input must never take the server down -----------------------
+
+    def assert_alive(self):
+        fresh = Conn()
+        try:
+            self.check("PING", expect=b"+PONG\r\n", conn=fresh)
+        finally:
+            fresh.close()
+
+    def test_non_integer_arguments(self):
+        self.check("RPUSH", "bad1", "a", expect=b":1\r\n")
+        err = b"-ERR value is not an integer or out of range\r\n"
+        self.check("LRANGE", "bad1", "x", "1", expect=err)
+        self.check("LPOP", "bad1", "many", expect=err)
+        self.check("SET", "bad2", "v", "PX", "soon", expect=err)
+        self.check("BLPOP", "bad1", "forever", expect=err)
+        self.check("PING", expect=b"+PONG\r\n")  # same connection still usable
+        self.assert_alive()
+
+    def test_stream_commands_missing_arguments(self):
+        self.check("XADD", "st6", expect=b"-ERR wrong number of arguments for XADD\r\n")
+        self.check("XRANGE", "st6", expect=b"-ERR wrong number of arguments for XRANGE\r\n")
+        self.assert_alive()
+
+    def test_protocol_error(self):
+        self.c.send(b"*x\r\n")
+        expect = b"-ERR Protocol error\r\n"
+        self.assertEqual(self.c.read_exact(len(expect)), expect)
+        self.assert_alive()
+
     def test_server_survives_everything(self):
         self.check("PING", expect=b"+PONG\r\n")
 
